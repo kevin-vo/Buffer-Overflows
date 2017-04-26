@@ -1,0 +1,69 @@
+The vulnerability took advantage of the 'gets' method of 'dejavu.c'. This method
+loads into a character buffer without checking bounds. We were able to overflow
+the buffer by using a script to pass an argument into 'gets' which would load a
+shellcode into memory and spawn a shell by replacing the return address in
+memory.
+
+To determine which address to jump to, I needed to see where the character
+buffer lied in memory. To do so, I first needed the value of the stack frame
+pointer for the method that  uses the character buffer: deja_vu().
+
+With gdb and a breakpoint at the end of deja_vu(), the value of ebp =
+0xbffff738. Running gdb command 'disassemble', I saw that the stack allocated
+0x10 bytes (4 words) for the  character buffer meaning the buffer's address =
+0xbffff728.
+
+Therefore, starting from the buffer address, we load 4 words worth of garbage
+chars to account for the buffer, 1 word worth of garbage to account for the sfp,
+1 word worth of the jump address to the shell code, and the shell code.
+
+The jump address would be 0xbffff728 + 4 words + 1 word + 1 word = 0xbffff740.
+
+BEFORE the exploit, I passed 'AAAAAAAA' to see its effect in the buffer.
+(gdb) x/30x door
+0xbffff728:     0x41414141      0x41414141      0xb7fed200      0x00000000
+0xbffff738:     0xbffff748      0x0804842a      0x08048440      0x00000000
+
+AFTER the exploit, with garbage values being 'A' and knowing the jump address should be
+6 words into the buffer, the gdb should output the following.
+
+(gdb) x/30x door
+0xbffff728:     0x41414141      0x41414141      0x41414141      0x41414141
+0xbffff738:     0x41414141      0xbffff740      shellcode.................
+
+Stack BEFORE:
+|0x08048440|
+|----------|
+|0x0804842a|<-rip
+|----------|
+|0xbffff748|<-ebp
+|----------|
+|0x00000000|
+|----------|
+|0xb7fed200|
+|----------|
+|0x41414141|
+|----------|
+|0x41414141|
+|----------|
+
+Stack AFTER:
+      .
+      .
+      .
+|shellcode |
+|----------|
+|0xbffff740|<-rip
+|----------|
+|0x41414141|<-ebp
+|----------|
+|0x41414141|
+|----------|
+|0x41414141|
+|----------|
+|0x41414141|
+|----------|
+|0x41414141|
+|----------|
+
+

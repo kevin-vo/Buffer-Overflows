@@ -1,0 +1,71 @@
+Another showcase of buffer overflow, although this time, it was a special case
+of 'off by one'. The user incorrectly set the bounds by offsetting by one byte
+thus allowing us to overwrite one byte above the buffer. Luckily, the address
+right above our buffer was a stack frame pointer.
+
+To exploit 'agent-brown', I basically needed the buffer address and the ebp
+above the buffer to be in the right place. Whilst in the 'flip' frame, I learned
+that the buffer started at address 0xbffff668. Also, since the buffer is of 64
+characters (16 words), we can count up the stack to find what the ebp value is.
+It's 0xbffff6b8.
+
+(gdb) x/50x buf
+0xbffff668:<--- 0x00000000      0xb7ff3fdc      0xbffff724      0x00000000
+0xbffff678:     0x00000000      0xb7e5f043      0x0804820e      0xbffff784
+0xbffff688:     0xbffff86c      0xb7ec3d1b      0xbffff86c      0x0000002f
+0xbffff698:     0xbffff6ec      0xb7fd2000      0x080484b0      0x080482f0
+0xbffff6a8:     0xbffff6b8<---  0x0804841d      0xbffff884      0xbffff6b8
+0xbffff6b8:     0xbffff6d8      0x0804845c      0xbffff884      0x0804965c
+0xbffff6c8:     0xbffff6e8      0xbffff6f0      0xb7fed270      0xbffff6f0
+0xbffff6d8:     0x00000000      0xb7e454d3      0x080484b0      0x00000000
+0xbffff6e8:     0x00000000      0xb7e454d3      0x00000002      0xbffff784
+0xbffff6f8:     0xbffff790      0xb7fdc858      0x00000000      0xbffff71c
+0xbffff708:     0xbffff790      0x00000000      0x080481e0      0xb7fd2000
+0xbffff718:     0x00000000      0x00000000      0x00000000      0x7bc1e960
+0xbffff728:     0x4c852d70      0x00000000
+
+We notice that when we ignore the least significant byte off both values, they
+are equal. This means if I overflow the buffer with the one byte I am given, I
+am able to replace the least significant byte of the sfp to equal a place in the
+buffer. Namely, I change the sfp to equal the start of the buffer, since I
+deemed it convenient and it would allow for the longest maximum shellcode.
+
+When the rest of the code operates, the ebp/esp will eventually be at the start
+of my buffer and once the epilogue instructions run, the return address will be
+4(%ebp)...aka the next word in our buffer. Therefore, at 4(%ebp), the return
+address will be 8(%ebp), which I store the shell code.
+
+Stack BEFORE:
+|0xbffff6b8|<-ebp
+|----------|
+|0x080482f0|
+|----------|
+      .    
+      .
+      .     
+|----------|
+|0x00000000|
+|----------|
+|0xbffff724|
+|----------|
+|0xb7ff3fdc|
+|----------|
+|0x00000000|
+
+
+Stack AFTER:
+|0xbffff668|<-ebp
+|----------|
+| garbage  |
+|----------|
+      .    
+      .
+      .     
+|----------|
+|shellcode |
+|----------|
+|shellcode |
+|----------|
+|0xbffff670|<-rip
+|----------|
+|0xbffff6b8|

